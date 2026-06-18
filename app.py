@@ -22,7 +22,7 @@ def load_data(file_path):
 def load_model(model_path):
     return joblib.load(model_path)
 
-file_path = '/content/Mineral Water- 2 years sales and stock data.xlsx'
+file_path = 'Mineral Water- 2 years sales and stock data.xlsx'
 
 try:
     df_resampled = load_data(file_path)
