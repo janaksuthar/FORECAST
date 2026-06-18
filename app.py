@@ -1,4 +1,4 @@
-%%writefile app.py
+
 import streamlit as st
 import pandas as pd
 from pmdarima import auto_arima # Import auto_arima for model loading and prediction
