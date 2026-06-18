@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from pmdarima import auto_arima # Import auto_arima for model loading and prediction
@@ -6,6 +5,7 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np # Import numpy for clipping
+import os
 
 st.set_page_config(layout='wide')
 st.title('Mineral Water Sales and Stock Forecasting App (AutoARIMA)')
@@ -27,12 +27,24 @@ def load_model(model_path):
 file_path = 'Mineral Water- 2 years sales and stock data.xlsx'
 
 try:
+    # Check if files exist
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Data file '{file_path}' not found in the current directory.")
+    if not os.path.exists('model_sales.pkl'):
+        raise FileNotFoundError("'model_sales.pkl' not found in the current directory.")
+    if not os.path.exists('model_soh.pkl'):
+        raise FileNotFoundError("'model_soh.pkl' not found in the current directory.")
+    
     df_resampled = load_data(file_path)
     model_sales = load_model('model_sales.pkl') # This will now load the AutoARIMA model
     model_soh = load_model('model_soh.pkl')     # This will now load the AutoARIMA model
     st.success('Data and AutoARIMA models loaded successfully!')
+except FileNotFoundError as e:
+    st.error(f'File not found: {e}')
+    st.info('Please ensure the following files are in the app directory:\n- Mineral Water- 2 years sales and stock data.xlsx\n- model_sales.pkl\n- model_soh.pkl')
+    st.stop()
 except Exception as e:
-    st.error(f'Error loading data or models: {e}. Please ensure the Excel file and AutoARIMA model files are in the correct directory.')
+    st.error(f'Error loading data or models: {e}')
     st.stop()
 
 # --- Forecasting Function for AutoARIMA ---
@@ -61,6 +73,9 @@ if st.button('Generate Sales Forecast'):
 
         # Generate forecast
         forecast_sales_arima_df = generate_forecast_arima(model_sales, sales_historical, forecast_horizon)
+        
+        # Clip negative sales predictions to zero
+        forecast_sales_arima_df['yhat'] = np.maximum(0, forecast_sales_arima_df['yhat'])
 
         st.subheader(f'Sales Quantity Forecast for the next {forecast_horizon} days')
 
@@ -72,6 +87,7 @@ if st.button('Generate Sales Forecast'):
         ax.set_xlabel('Date')
         ax.set_ylabel('Sales Quantity')
         ax.legend()
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig_sales)
 
         st.subheader('Raw Sales Forecast Data')
@@ -100,6 +116,7 @@ if st.button('Generate Stock on Hand Forecast'):
         ax.set_xlabel('Date')
         ax.set_ylabel('Stock on Hand')
         ax.legend()
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig_soh)
 
         st.subheader('Raw Stock on Hand Forecast Data')
