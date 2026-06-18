@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from pmdarima import auto_arima # Import auto_arima for model loading and prediction
 import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -8,7 +7,7 @@ import numpy as np # Import numpy for clipping
 import os
 
 st.set_page_config(layout='wide')
-st.title('Mineral Water Sales and Stock Forecasting App (AutoARIMA)')
+st.title('Mineral Water Sales and Stock Forecasting App')
 
 # --- Load Data ---
 @st.cache_data
@@ -36,9 +35,9 @@ try:
         raise FileNotFoundError("'model_soh.pkl' not found in the current directory.")
     
     df_resampled = load_data(file_path)
-    model_sales = load_model('model_sales.pkl') # This will now load the AutoARIMA model
-    model_soh = load_model('model_soh.pkl')     # This will now load the AutoARIMA model
-    st.success('Data and AutoARIMA models loaded successfully!')
+    model_sales = load_model('model_sales.pkl')
+    model_soh = load_model('model_soh.pkl')
+    st.success('Data and models loaded successfully!')
 except FileNotFoundError as e:
     st.error(f'File not found: {e}')
     st.info('Please ensure the following files are in the app directory:\n- Mineral Water- 2 years sales and stock data.xlsx\n- model_sales.pkl\n- model_soh.pkl')
@@ -47,77 +46,62 @@ except Exception as e:
     st.error(f'Error loading data or models: {e}')
     st.stop()
 
-# --- Forecasting Function for AutoARIMA ---
-def generate_forecast_arima(model, historical_series, periods):
-    # Make predictions for future periods
-    forecast_values = model.predict(n_periods=periods)
-
-    # Create a date range for the forecast
-    last_date = historical_series.index[-1]
-    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=periods, freq='D')
-
-    forecast_df = pd.DataFrame({'ds': future_dates, 'yhat': forecast_values})
-    forecast_df = forecast_df.set_index('ds')
-    return forecast_df
+# --- Forecasting Function for Prophet ---
+def generate_forecast_prophet(model, periods):
+    # Make future dataframe for Prophet
+    future = model.make_future_dataframe(periods=periods)
+    # Generate forecast
+    forecast = model.predict(future)
+    return forecast
 
 # --- Sidebar for User Input ---
 st.sidebar.header('Forecasting Settings')
 forecast_horizon = st.sidebar.slider('Select Forecast Horizon (Days)', 7, 365, 30)
 
 # --- Main Content ---
-st.header('Sales Quantity Forecast (AutoARIMA)')
+st.header('Sales Quantity Forecast')
 if st.button('Generate Sales Forecast'):
     with st.spinner('Generating sales forecast...'):
-        # Prepare historical data for the ARIMA model
-        sales_historical = df_resampled['SALES QTY']
-
         # Generate forecast
-        forecast_sales_arima_df = generate_forecast_arima(model_sales, sales_historical, forecast_horizon)
+        forecast_sales = generate_forecast_prophet(model_sales, forecast_horizon)
         
         # Clip negative sales predictions to zero
-        forecast_sales_arima_df['yhat'] = np.maximum(0, forecast_sales_arima_df['yhat'])
+        forecast_sales['yhat'] = np.maximum(0, forecast_sales['yhat'])
 
         st.subheader(f'Sales Quantity Forecast for the next {forecast_horizon} days')
 
-        # Plotting for AutoARIMA (custom plot)
-        fig_sales, ax = plt.subplots(figsize=(14, 7))
-        ax.plot(sales_historical.index, sales_historical, label='Historical Sales QTY', color='blue')
-        ax.plot(forecast_sales_arima_df.index, forecast_sales_arima_df['yhat'], label='AutoARIMA Forecast', color='green', linestyle='--')
-        ax.set_title('Sales Quantity Forecast with AutoARIMA')
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Sales Quantity')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+        # Plotting for Prophet
+        fig_sales = model_sales.plot(forecast_sales)
+        plt.grid(True, alpha=0.3)
         st.pyplot(fig_sales)
 
+        st.subheader('Sales Forecast Components')
+        fig_components_sales = model_sales.plot_components(forecast_sales)
+        st.pyplot(fig_components_sales)
+
         st.subheader('Raw Sales Forecast Data')
-        st.dataframe(forecast_sales_arima_df.reset_index().rename(columns={'index': 'ds'}))
+        st.dataframe(forecast_sales[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(forecast_horizon))
 
 
-st.header('Stock on Hand Forecast (AutoARIMA)')
+st.header('Stock on Hand Forecast')
 if st.button('Generate Stock on Hand Forecast'):
     with st.spinner('Generating Stock on Hand forecast...'):
-        # Prepare historical data for the ARIMA model
-        soh_historical = df_resampled['SOH (Stock on Hand)/ Closing Inventory']
-
         # Generate forecast
-        forecast_soh_arima_df = generate_forecast_arima(model_soh, soh_historical, forecast_horizon)
+        forecast_soh = generate_forecast_prophet(model_soh, forecast_horizon)
 
         # Clip negative SOH predictions to zero
-        forecast_soh_arima_df['yhat'] = np.maximum(0, forecast_soh_arima_df['yhat'])
+        forecast_soh['yhat'] = np.maximum(0, forecast_soh['yhat'])
 
         st.subheader(f'Stock on Hand Forecast for the next {forecast_horizon} days')
 
-        # Plotting for AutoARIMA (custom plot)
-        fig_soh, ax = plt.subplots(figsize=(14, 7))
-        ax.plot(soh_historical.index, soh_historical, label='Historical SOH', color='red')
-        ax.plot(forecast_soh_arima_df.index, forecast_soh_arima_df['yhat'], label='AutoARIMA Forecast', color='purple', linestyle='--')
-        ax.set_title('Stock on Hand Forecast with AutoARIMA (Negative Values Clipped)')
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Stock on Hand')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+        # Plotting for Prophet
+        fig_soh = model_soh.plot(forecast_soh)
+        plt.grid(True, alpha=0.3)
         st.pyplot(fig_soh)
 
+        st.subheader('Stock on Hand Forecast Components')
+        fig_components_soh = model_soh.plot_components(forecast_soh)
+        st.pyplot(fig_components_soh)
+
         st.subheader('Raw Stock on Hand Forecast Data')
-        st.dataframe(forecast_soh_arima_df.reset_index().rename(columns={'index': 'ds'}))
+        st.dataframe(forecast_soh[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(forecast_horizon))
